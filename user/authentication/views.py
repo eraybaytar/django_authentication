@@ -1,98 +1,158 @@
-from django.shortcuts import render, redirect
-from django.http import HttpResponse
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth import logout, authenticate
+from .models import UserToken, UserProfile
+from django.contrib.auth.models import User
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.shortcuts import redirect
 from django.urls import reverse
-from django.contrib import messages
-from .models import User
-from .decorators import role_required
-from .forms import RegisterForm, LoginForm, PasswordResetRequestForm, SetNewPasswordForm
 
 # Create your views here.
 
-def dashboard(request):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return redirect("login")
-    user = User.objects.get(id=user_id)
-    return HttpResponse(f"Hoş geldin {user.full_name} - Rolün: {user.role}")
+class CreateUserView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
 
-def register_view(request):
-    if request.method == "POST":
-        form = RegisterForm(request.POST)
-        if form.is_valid():
-            if User.objects.filter(email=form.cleaned_data['email']).exists():
-                return HttpResponse("Email zaten kayıtlı.", status=400)
-            user = User(
-                email=form.cleaned_data['email'],
-                full_name=form.cleaned_data['full_name']
+        if not username or not password:
+            return Response(
+                {
+                    'error': 'username password boş geçilemez'
+                },
+                status=status.HTTP_400_BAD_REQUEST
             )
-            user.set_password(form.cleaned_data['password'])
-            token = user.generate_token("email_verification_token")
-            user.save()
-            return HttpResponse("Kayıt başarılı! Şimdi giriş yapabilirsiniz.")
-    else:
-        form = RegisterForm()
-    return render(request, "authentication/register.html", {"form": form})
+        
+        if User.objects.filter(username=username).exists():
+            return Response(
+                {
+                    'error':'kullanıcı adı alınmış'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-def login_view(request):
-    if request.method == "POST":
-        form = LoginForm(request.POST)
-        if form.is_valid():
-            try:
-                user = User.objects.get(email=form.cleaned_data['email'])
-                if user.check_password(form.cleaned_data['password']):
-                    request.session['user_id'] = user.id
-                    return redirect("dashboard")
-                return HttpResponse("Hatalı şifre!", status=401)
-            except User.DoesNotExist:
-                return HttpResponse("Kullanıcı bulunamadı", status=404)
-    else:
-        form = LoginForm()
-    return render(request, "authentication/login.html", {"form": form})
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+        )
 
-def logout_view(request):
-    request.session.flush()
-    return redirect("login")
+        new_user = UserProfile(
+            user=user
+        )
+        new_user.save()
 
-def reset_password_request_view(request):
-    if request.method == "POST":
-        form = PasswordResetRequestForm(request.POST)
-        if form.is_valid():
-            try:
-                user = User.objects.get(email=form.cleaned_data["email"])
-                token = user.generate_token("reset_password_token")
-                reset_url = request.build_absolute_uri(
-                    reverse("reset_password") + f"?token={token}"
+        response = {
+            'id':new_user.id,
+            'username':new_user.user.username
+        }
+        return Response(
+            {
+                'user':response
+            },
+            status=status.HTTP_200_OK
+        )
+    
+    def get(self, request):
+        users = UserProfile.objects.all()
+        
+        response = []
+        for user in users:
+            temp = {
+                'id': user.user.id,
+                'username': user.user.username
+            }
+            response.append(temp)
+        
+        return Response(
+            {
+                'users': response
+            },
+            status=status.HTTP_200_OK
+        )
+
+class UserLoginView(APIView):
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
+
+        try:
+            _user = User.objects.get(
+                username=username
+            )
+            if not _user.is_active:
+                return Response(
+                    {
+                        'message': 'Hesap aktif değil'
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
                 )
-                print(f"[KONSOLDA ŞİFRE SIFIRLAMA LİNKİ]: {reset_url}")
-                messages.success(request, "Eğer e-posta sistemde varsa, bir bağlantı gönderildi.")
-            except User.DoesNotExist:
-                # Gizli tutmak için her durumda aynı mesajı veriyoruz
-                messages.success(request, "Eğer e-posta sistemde varsa, bir bağlantı gönderildi.")
-            return redirect("login")
-    else:
-        form = PasswordResetRequestForm()
-    return render(request, "authentication/reset_request.html", {"form": form})
+        except User.DoesNotExist:
+            return Response(
+                {
+                    'error': 'Kullanıcı bulunamadı'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        user = authenticate(
+            request=request,
+            username=username,
+            password=password
+        )
+        
+        if user is not None:
+            refresh = RefreshToken.for_user(user)
 
+            try:
+                _token = UserToken.objects.get(
+                    user=user
+                )
+                _token.delete()
+            except UserToken.DoesNotExist:
+                pass
+            
+            _token = UserToken(
+                user=user,
+                refresh=str(refresh),
+                access=str(refresh.access_token)
+            )
+            _token.save()
 
-def reset_password_view(request):
-    token = request.GET.get("token", "")
-    try:
-        user = User.objects.get(reset_password_token=token)
-    except User.DoesNotExist:
-        return HttpResponse("Geçersiz veya süresi dolmuş bağlantı.", status=400)
+            return Response(
+                {
+                    'refresh_token': _token.refresh,
+                    'access_token': _token.access
+                }
+            )
+        else:
+            return Response(
+                {
+                    'error': 'Kullanıcı adı veya şifre yanlış'
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
 
-    if request.method == "POST":
-        form = SetNewPasswordForm(request.POST)
-        if form.is_valid():
-            user.set_password(form.cleaned_data["new_password"])
-            user.reset_password_token = None  # Token'ı geçersiz kıl
-            user.save()
-            messages.success(request, "Şifreniz başarıyla güncellendi.")
-            return redirect("login")
-    else:
-        form = SetNewPasswordForm()
-    return render(request, "authentication/reset_password.html", {"form": form})
+class UserLogoutView(APIView):
+    def post(self,request):
+        try:
+            token = UserToken.objects.get(
+                access = request.data.get('access_token')
+            )
+        except:
+            return Response(
+                {
+                    'error': 'token yok'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        token.delete()
+        login_url = reverse('user:login')
 
-@role_required(['admin'])
-def admin_dashboard_view(request):
-    return render(request, 'accounts/admin_dashboard.html')
+        return Response(
+            {
+                'message':'başarıyla çıkış yaptın',
+                'redirect_url': login_url
+            },
+            status=status.HTTP_200_OK
+        )

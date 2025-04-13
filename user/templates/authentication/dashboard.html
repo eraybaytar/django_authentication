@@ -1,8 +1,0 @@
-{% extends "authentication/base.html" %}
-{% block title %}Dashboard{% endblock %}
-{% block content %}
-<h2>Hoş geldiniz!</h2>
-<p>{{ user.full_name }} olarak giriş yaptınız.</p>
-<p>Rolünüz: <strong>{{ user.role }}</strong></p>
-<p><a href="{% url 'logout' %}">Çıkış Yap</a></p>
-{% endblock %}
