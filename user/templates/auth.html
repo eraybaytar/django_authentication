@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Kullanıcı Paneli</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 0;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+
+        nav {
+            background-color: #ffffff;
+            padding: 1em 2em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        nav .brand {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #333;
+        }
+
+        nav .nav-buttons button {
+            margin-left: 10px;
+            padding: 8px 16px;
+            background-color: #f0f0f0;
+            border: none;
+            color: #333;
+            font-weight: 500;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        nav .nav-buttons button:hover {
+            background-color: #e0e0e0;
+            transform: scale(1.05);
+        }
+
+
+        .container {
+            max-width: 400px;
+            margin: 40px auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        h2 {
+            text-align: center;
+        }
+
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background-color: #333;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        button:hover {
+            background-color: #555;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        #alert-box {
+            padding: 15px;
+            margin: 20px auto;
+            max-width: 400px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .success {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .error {
+            background-color: #f44336;
+            color: white;
+        }
+    </style>
+</head>
+<body onload="initApp()">
+
+<nav id="navbar" class="hidden">
+    <div class="brand">Kullanıcı Paneli</div>
+    <div class="nav-buttons">
+        <button onclick="showTab('welcome')">Anasayfa</button>
+        <button onclick="logout()">Çıkış Yap</button>
+    </div>
+</nav>
+
+<div id="alert-box" class="hidden"></div>
+
+<div class="container" id="register-tab">
+    <h2>Kayıt Ol</h2>
+    <input type="text" id="register-username" placeholder="Kullanıcı Adı">
+    <input type="password" id="register-password" placeholder="Şifre">
+    <button onclick="register()">Kayıt Ol</button>
+    <p style="text-align:center; margin-top:10px;">
+        Zaten hesabınız var mı?
+        <a href="#" onclick="showTab('login')">Giriş Yap</a>
+    </p>
+</div>
+
+<div class="container hidden" id="login-tab">
+    <h2>Giriş Yap</h2>
+    <input type="text" id="login-username" placeholder="Kullanıcı Adı">
+    <input type="password" id="login-password" placeholder="Şifre">
+    <button onclick="login()">Giriş Yap</button>
+    <p style="text-align:center; margin-top:10px;">
+        Hesabınız yok mu?
+        <a href="#" onclick="showTab('register')">Kayıt Ol</a>
+    </p>
+</div>
+
+<div class="container hidden" id="welcome-tab">
+    <h2>Hoş geldiniz!</h2>
+    <p style="text-align:center;">Sisteme giriş yaptınız. Sol üstten gezinmeye devam edebilirsiniz.</p>
+</div>
+
+<script>
+    function initApp() {
+        const access_token = localStorage.getItem('access_token');
+        if (access_token) {
+            showTab('welcome');
+            document.getElementById('navbar').classList.remove('hidden');
+        } else {
+            showTab('login');
+            document.getElementById('navbar').classList.add('hidden');
+        }
+    }
+
+    function showTab(tabId) {
+        const tabs = ['register-tab', 'login-tab', 'welcome-tab'];
+        tabs.forEach(id => {
+            document.getElementById(id).classList.add('hidden');
+        });
+        document.getElementById(tabId + '-tab').classList.remove('hidden');
+
+        // Navbar kontrolü
+        if (tabId === 'welcome') {
+            document.getElementById('navbar').classList.remove('hidden');
+        } else {
+            document.getElementById('navbar').classList.add('hidden');
+        }
+    }
+
+    function showAlert(message, type = 'success') {
+        const alertBox = document.getElementById('alert-box');
+        alertBox.textContent = message;
+        alertBox.className = type;
+        alertBox.classList.remove('hidden');
+        setTimeout(() => {
+            alertBox.classList.add('hidden');
+            alertBox.classList.remove('success', 'error');
+        }, 3000);
+    }
+
+    function register() {
+        const usernameInput = document.getElementById('register-username');
+        const passwordInput = document.getElementById('register-password');
+        const username = usernameInput.value;
+        const password = passwordInput.value;
+
+        fetch('/accounts/register/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username, password})
+        }).then(res => res.json()).then(data => {
+            if (data.user) {
+                showAlert("Kayıt başarılı!", 'success');
+                usernameInput.value = ''; // Kayıt olunca formu sıfırla
+                passwordInput.value = '';
+                showTab('login');
+            } else {
+                showAlert(data.error || 'Hata oluştu', 'error');
+            }
+        });
+    }
+
+    function login() {
+        const usernameInput = document.getElementById('login-username');
+        const passwordInput = document.getElementById('login-password');
+        const username = usernameInput.value;
+        const password = passwordInput.value;
+
+        fetch('/accounts/login/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username, password})
+        }).then(res => res.json()).then(data => {
+            if (data.access_token) {
+                localStorage.setItem('access_token', data.access_token);
+                localStorage.setItem('refresh_token', data.refresh_token);
+                usernameInput.value = ''; // Giriş yapınca formu sıfırla
+                passwordInput.value = '';
+                updateNavbar();
+                showAlert("Giriş başarılı!", 'success');
+                showTab('welcome');
+            } else {
+                showAlert(data.error || 'Hata oluştu', 'error');
+            }
+        });
+    }
+
+    function logout() {
+        const access_token = localStorage.getItem('access_token');
+
+        if (!access_token) {
+            showAlert("Zaten çıkış yapılmış.", 'error');
+            return;
+        }
+
+        fetch('/accounts/logout/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({access_token})
+        }).then(res => res.json()).then(data => {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            updateNavbar();
+            showAlert(data.message || "Çıkış yapıldı.", 'success');
+            showTab('login');
+        });
+    }
+
+    function updateNavbar() {
+        const token = localStorage.getItem('access_token');
+        if (token) {
+            document.getElementById('navbar').classList.remove('hidden');
+        } else {
+            document.getElementById('navbar').classList.add('hidden');
+        }
+    }
+</script>
+</body>
+</html>

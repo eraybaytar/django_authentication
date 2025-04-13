@@ -7,6 +7,10 @@ from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.shortcuts import render
+
+def frontend_view(request):
+    return render(request, 'auth.html')
 
 # Create your views here.
 
